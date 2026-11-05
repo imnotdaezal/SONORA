@@ -9,16 +9,19 @@ const dock=element('section','memory-dock');dock.setAttribute('aria-label','Musi
 dock.hidden=true;document.body.append(dock);
 let mode='universe',busy=false,queue=[],position=-1,shuffled=false,repeat='off',internal=false,opened=null,endedTimer,renderedSignature='';
 const word=(en,vi)=>language==='vi'?vi:en;
-const ordered=()=>visible().map((t,i)=>({t,i})).sort((a,b)=>(b.t.date||'').localeCompare(a.t.date||'')||a.i-b.i).map(x=>x.t);
+let sortMode='memory-desc';try{sortMode=localStorage.getItem('sonora-sort')||sortMode}catch{}if(!['memory-desc','memory-asc','added-desc','added-asc'].includes(sortMode))sortMode='memory-desc';
+const ordered=()=>DiaryCore.order(visible(),sortMode);
+const sortLabel=element('label','diary-sort');sortLabel.innerHTML='<span></span><select id="diary-sort"><option value="memory-desc"></option><option value="memory-asc"></option><option value="added-desc"></option><option value="added-asc"></option></select>';$('.diary-masthead').append(sortLabel);$('#diary-sort').value=sortMode;$('#diary-sort').onchange=e=>{sortMode=e.target.value;try{localStorage.setItem('sonora-sort',sortMode)}catch{}render()};
 const titleFor=t=>t.demo?tr(t.note):t.note;
 const button=(label,cls,action)=>{const b=element('button',cls,label);b.type='button';b.onclick=action;return b};
 function texts(){
+$('.diary-sort>span').textContent=word('Sort by','Sắp xếp');const sortNames=[word('Memory date · newest','Ngày ký ức · mới nhất'),word('Memory date · oldest','Ngày ký ức · cũ nhất'),word('Date added · newest','Ngày thêm · mới nhất'),word('Date added · oldest','Ngày thêm · cũ nhất')];[...$('#diary-sort').options].forEach((o,i)=>o.textContent=sortNames[i]);$('#diary-sort').title=word('Older memories without an added date keep their original order at the end.','Ký ức cũ chưa có ngày thêm giữ thứ tự ban đầu ở cuối.');
 $('#view-toggle').innerHTML=(mode==='diary'?'Universe':'Diary')+' <span aria-hidden="true">'+(mode==='diary'?'✧':'↗')+'</span>';
 $('#view-toggle').setAttribute('aria-expanded',String(mode==='diary'));
 $('.book-cover h2').textContent=word('My little universe.','Vũ trụ nhỏ của tôi.');$('.book-cover p').textContent=word('Some songs become pages.','Có những bài hát hóa thành trang viết.');
 $('#diary-heading').textContent=word('Days worth keeping.','Những ngày muốn giữ.');$('.diary-subtitle').textContent=word('A song, a feeling, a page of your life.','Một bài hát, một cảm xúc, một trang đời.');
 $('#play-memories').textContent=word('▶ Play my memories','▶ Nghe những ký ức');
-$('#diary-count').textContent=ordered().length+word(' memories · newest first',' ký ức · mới nhất trước');$('#play-memories').disabled=!ordered().length;
+$('#diary-count').textContent=ordered().length+word(' memories',' ký ức');$('#play-memories').disabled=!ordered().length;
 const labels={'queue-shuffle':word('Shuffle queue','Trộn danh sách'),'queue-prev':word('Previous memory','Ký ức trước'),'queue-next':word('Next memory','Ký ức tiếp theo'),'queue-repeat':word('Repeat: ','Lặp: ')+({off:word('off','tắt'),all:word('all','tất cả'),one:word('one','một bài')})[repeat],'memory-seek':word('Seek in current song','Tua bài đang phát'),'queue-close':word('Close queue','Đóng danh sách')};
 for(const [id,label] of Object.entries(labels)){$('#'+id).setAttribute('aria-label',label);$('#'+id).title=label}
 $('#queue-toggle').textContent=word('Queue','Danh sách')+' · '+queue.length;
@@ -98,7 +101,7 @@ async function transition(){
    ]]
   ];
   if(!reduced.matches){
-   const options={duration:1900,easing:'cubic-bezier(.4,0,.2,1)',fill:'both',direction:toDiary?'normal':'reverse'};
+   const options={duration:window.SonoraExperience?.transitionDuration()||2400,easing:'cubic-bezier(.4,0,.2,1)',fill:'both',direction:toDiary?'normal':'reverse'};
    for(const [node,keyframes] of frames)animations.push(node.animate(keyframes,options));
    // Start every layer on the same clock; closing is the exact inverse of opening.
    const start=document.timeline.currentTime;
@@ -127,7 +130,7 @@ $('#queue-shuffle').onclick=()=>{shuffled=!shuffled;if(shuffled&&queue.length){q
 $('#queue-repeat').onclick=()=>{repeat=({off:'all',all:'one',one:'off'})[repeat];texts()};
 $('#queue-toggle').onclick=()=>{const panel=$('#memory-queue');panel.hidden=!panel.hidden;$('#queue-toggle').setAttribute('aria-expanded',String(!panel.hidden))};$('#queue-close').onclick=()=>{$('#memory-queue').hidden=true;$('#queue-toggle').setAttribute('aria-expanded','false');$('#queue-toggle').focus()};document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#memory-queue').hidden)$('#queue-close').click()});
 $('#memory-seek').oninput=e=>{const duration=ytPlayer?.getDuration?.();if(duration>0)ytPlayer.seekTo(Number(e.target.value)/1000*duration,true)};
-const time=n=>Number.isFinite(n)?Math.floor(n/60)+':'+String(Math.floor(n%60)).padStart(2,'0'):'0:00';setInterval(()=>{if(document.hidden||dock.hidden)return;let d=0,t=0;try{d=ytPlayer?.getDuration?.()||0;t=ytPlayer?.getCurrentTime?.()||0}catch{}$('#elapsed').textContent=time(t);$('#duration').textContent=time(d);$('#memory-seek').disabled=d<=0;if(document.activeElement!==$('#memory-seek'))$('#memory-seek').value=d?Math.min(1000,t/d*1000):0;$('#memory-seek').setAttribute('aria-valuetext',time(t)+' / '+time(d))},800);
+const time=n=>Number.isFinite(n)?Math.floor(n/60)+':'+String(Math.floor(n%60)).padStart(2,'0'):'0:00';setInterval(()=>{if(document.hidden||dock.hidden)return;let d=0,t=0;try{d=ytPlayer?.getDuration?.()||0;t=ytPlayer?.getCurrentTime?.()||0}catch{}$('#elapsed').textContent=time(t);$('#duration').textContent=time(d);$('#memory-seek').disabled=d<=0||current()?.media.type==='spotify';if(document.activeElement!==$('#memory-seek'))$('#memory-seek').value=d?Math.min(1000,t/d*1000):0;$('#memory-seek').setAttribute('aria-valuetext',time(t)+' / '+time(d))},800);
 window.SonoraMemories={render,ended,selection(id){if(!internal&&id!==selected){clearTimeout(endedTimer);queue=[];position=-1}},playback(status){if(status==='playing'||status==='preparing'){dock.hidden=false;document.body.classList.add('has-memory-dock')}queueMicrotask(updateDock)},reset(){clearTimeout(endedTimer);queue=[];position=-1;opened=null;$('#memory-queue').hidden=true;dock.hidden=true;document.body.classList.remove('has-memory-dock')}};
 render();
 })();
